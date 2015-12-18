@@ -8,6 +8,14 @@ var defaults = require('levelup-defaults');
 var bytewise = require('bytewise');
 var EventEmitter = require('events').EventEmitter;
 
+function NotFoundError(message) {
+    this.name = "NotFoundError";
+    this.message = (message || "Not Found");
+    this.notFound = true;
+}
+NotFoundError.prototype = Error.prototype;
+
+
 function CommitDB(db, opts) {
     if(!(this instanceof CommitDB)) return new CommitDB(db, opts);
     EventEmitter.call(this);
@@ -43,13 +51,14 @@ CommitDB.prototype.commit = function(value, opts, cb) {
         unify: false, // if true, this commit uses all current heads as prev
         stay: false // if true then commit won't check out the current commit
     }, opts || {});
- 
+
+    var self = this;
     if(opts.unify) {
         this.heads(function(err, heads) {
             if(err) return cb(err);
             delete opts.unify
             opts.prev = heads;
-            this._commit(value, opts, cb);
+            self._commit(value, opts, cb);
         });
     } else {
         if(!opts.prev || !opts.prev.length) {
@@ -71,51 +80,20 @@ CommitDB.prototype.commit = function(value, opts, cb) {
     }
 };
 
-// add an entry to the nextIndex 
-// (the nextIndex let's you look up the children of a parent commit)
-CommitDB.prototype._addNextIndex = function(parent, child, cb) {
-    var key = ['n', parent];
-    var children;
-    var self = this;
-    this.db.get(key, function(err, data) {
-        if(err) {
-            if(!err.notFound) return cb(err);
-            children = [child];
-        } else {
-            children = data;
-            children.push(child);
-        }
-        self.db.put(key, children, function(err) {
-            if(err) return cb(err);
-            cb(null, children);
-        });
-    });
-};
-
-CommitDB.prototype._addNextIndexes = function(parents, child, cb) {
-    var self = this;
-    async.eachSeries(parents, function(parent, cb) {
-        self._addNextIndex(parent, child, cb);
-    }, function(err) {
-        if(err) return cb(err);
-        cb(null);
-    });
-}
-
 // actually commit
 CommitDB.prototype._commit = function(value, opts, cb) {
 
-    var meta = {
+    var doc = {
         time: Date.now()
     };
     if(opts.prev) {
-        meta.prev = opts.prev;
+        doc.prev = opts.prev;
     } else {
         opts.prev = [];
     }
 
     var key = uuid();
-    var doc = {meta: meta, value: value};
+    doc.value = value;
 
     var isTail = false;
     var ops = []
@@ -149,16 +127,47 @@ CommitDB.prototype._commit = function(value, opts, cb) {
         }
         if(isTail) {
             this.tailCache = key;
-            cb(null, key, meta);
+            cb(null, key, doc);
         } else {
             // if this is not the tail then add a nextIndex
             this._addNextIndexes(opts.prev, key, function(err) {
                 if(err) return cb(err);
-                cb(null, key, meta);
+                cb(null, key, doc);
             });
         }
     }.bind(this));
 };
+
+// add an entry to the nextIndex 
+// (the nextIndex let's you look up the children of a parent commit)
+CommitDB.prototype._addNextIndex = function(parent, child, cb) {
+    var key = ['n', parent];
+    var children;
+    var self = this;
+    this.db.get(key, function(err, data) {
+        if(err) {
+            if(!err.notFound) return cb(err);
+            children = [child];
+        } else {
+            children = data;
+            children.push(child);
+        }
+        self.db.put(key, children, function(err) {
+            if(err) return cb(err);
+            cb(null, children);
+        });
+    });
+};
+
+CommitDB.prototype._addNextIndexes = function(parents, child, cb) {
+    var self = this;
+    async.eachSeries(parents, function(parent, cb) {
+        self._addNextIndex(parent, child, cb);
+    }, function(err) {
+        if(err) return cb(err);
+        cb(null);
+    });
+}
 
 // delete a commit
 CommitDB.prototype.del = function(key, opts) {
@@ -170,6 +179,7 @@ CommitDB.prototype.del = function(key, opts) {
         recursive: false // delete a non-head commit and all its children
     }, opts || {});
 
+    throw new Error("unimplemented");
     // ToDo implement
 };
 
@@ -186,15 +196,44 @@ CommitDB.prototype.get = function(key, cb) {
 CommitDB.prototype._get = function(key, cb) {
     this.db.get(['c', key], function(err, data) {
         if(err) {
-            if(err.notFound) return cb(new Error("No such commit: " + key));
+            if(err.notFound) return cb(new NotFoundError("No such commit: " + key));
             return cb(err);
         }
-        if(!data || !data.meta) {
+        if(!data) {
             return cb(new Error("Encountered invalid commit: " + key));
         }
         cb(null, data);
     });
 };
+
+// check out a commit
+CommitDB.prototype.checkout = function(key, opts, cb) {
+    if(typeof opts === 'function') {
+        cb = opts;
+        opts = null;
+    }
+    opts = xtend({
+        verify: true // check if commit exists and return commit
+    }, opts || {});
+    if(!key) {
+        return cb(new Error("You must specify which commit to check out"));
+    }
+    this._checkout(key, opts, cb);
+}
+
+CommitDB.prototype._checkout = function(key, opts, cb) {
+    if(!opts.verify) {
+        this.cur = key;
+        if(cb) cb(null);
+        return;
+    }
+    this._get(key, function(err, data) {
+        if(err) return cb(err);
+        this.cur = key;
+        cb(null, data);
+    });
+}
+
 
 // get prev commit(s) (from current checkout or specified commit)
 CommitDB.prototype.prev = function(key, cb) {
@@ -212,11 +251,11 @@ CommitDB.prototype._prev = function(key, cb) {
     var self = this;
     this._get(key, function(err, data) {
         if(err) return cb(err);
-        if(!data.meta.prev || !data.meta.prev.length) {
+        if(!data.prev || !data.prev.length) {
             return cb(new Error("There is no previous commit. This must be the tail."));
         }
         var prevs = [];
-        async.eachSeries(data.meta.prev, function(prev) {
+        async.eachSeries(data.prev, function(prev) {
             self._get(prev, function(err, data) {
                 if(err) return cb(err);
                 prevs.push(data);
@@ -310,19 +349,19 @@ CommitDB.prototype._prevStream = function(commit, opts) {
         self._get(c, function(err, data) {
             if(err) return cb(err);
             if(opts.preventDoubles) {
-                for(i=0; i < data.meta.prev.length; i++) {
-                    if(keys[data.meta.prev[i]]) continue;
-                    keys[data.meta.prev[i]] = true;
-                    queue.push(data.meta.prev[i]);
+                for(i=0; i < data.prev.length; i++) {
+                    if(keys[data.prev[i]]) continue;
+                    keys[data.prev[i]] = true;
+                    queue.push(data.prev[i]);
                 }
             } else {
-                queue = queue.concat(data.meta.prev);
+                queue = queue.concat(data.prev);
             }
             // skip the current commit
             if(c === commit) {
                 return getPrevs(queue.shift(), cb);
             }
-            data.meta.commit = c;
+            data.commit = c;
             cb(null, data, c);
         });
     }
@@ -359,16 +398,16 @@ CommitDB.prototype.nextStream = function(commit) {
     function getCommit(commit, cb) {
         self._get(commit, function(err, data) {
             if(opts.preventDoubles) {
-                for(i=0; i < data.meta.prev.length; i++) {
-                    if(keys[data.meta.prev[i]]) continue;
-                    keys[data.meta.prev[i]] = true;
-                    queue.push(data.meta.prev[i]);
+                for(i=0; i < data.prev.length; i++) {
+                    if(keys[data.prev[i]]) continue;
+                    keys[data.prev[i]] = true;
+                    queue.push(data.prev[i]);
                 }
             } else {
-                queue = queue.concat(data.meta.prev);
+                queue = queue.concat(data.prev);
             }
 
-            data.meta.commit = commit;
+            data.commit = commit;
             cb(null, data);
         });
     }

@@ -11,6 +11,7 @@ var db = commitdb(rawdb, {
 });
 
 var a = [
+  {foo: 0},
   {foo: 1},
   {foo: 2},
   {foo: 3},
@@ -22,34 +23,64 @@ var a = [
   {foo: 9}
 ];
 
+var b = [
+  {bar: 3},
+  {bar: 4},
+  {bar: 5}
+];
+
+var commits = [];
+
 async.eachSeries(a, function(o, cb) {
-    db.commit(o, cb);
+    db.commit(o, function(err, key) {
+        if(err) return cb(err);
+        commits.push(key);
+        cb();
+    });
 }, function(err) {
    if(err) return console.error("Error:", err);
 
-    console.log("Success");
+    console.log("commits:", commits.length);
 
-    db.heads(function(err, heads) {
-        console.log("Heads:", heads);
-    });
+    // check out fourth commit
+    db.checkout(commits[3], {verify: false});
 
-    db.tail(function(err, tail) {
-        console.log("Tail:", tail);
+    async.eachSeries(b, function(o, cb) {
+        db.commit(o, cb);
+    }, function(err) {
+        if(err) return console.error("Error:", err);
+
+        db.commit({
+            foo: 9,
+            bar: 5
+        }, {
+            unify: true
+        }, function(err, key) {
+
+            console.log("done committing");
+            
+            db.heads(function(err, heads) {
+                console.log("Heads:", heads);
+            });
+            
+            db.tail(function(err, tail) {
+                console.log("Tail:", tail);
+            });
+            
+            var s = db.prevStream({
+                idOnly: false
+            });
+            s.on('data', function(data) {
+                console.log(data);
+            });
+            s.on('end', function() {
+                console.log("Ended");
+            });
+            s.on('error', function(err) {
+                console.error("Error", err);
+            });
+        });
     });
-    
-    var s = db.prevStream({
-        idOnly: true
-    });
-    s.on('data', function(data) {
-        console.log(data);
-    });
-    s.on('end', function() {
-        console.log("Ended");
-    });
-    s.on('error', function(err) {
-        console.error("Error", err);
-    })
 });
-
 
 
