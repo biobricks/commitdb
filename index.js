@@ -26,13 +26,6 @@ function CommitDB(db, opts) {
         valueEncoding: 'json'
     });
 
-/*
-    this.cdb = sublevel(this.db, 'c'); // actual commits
-    this.hdb = sublevel(this.db, 'h'); // heads
-    this.rdb = sublevel(this.db, 'r'); // reverse history index
-    this.vdb = sublevel(this.db, 'v'); // one-off values like commit-count 
-*/
-
     this.cur = null; // currently checked out commit
 
 }
@@ -77,6 +70,35 @@ CommitDB.prototype.commit = function(value, opts, cb) {
     }
 };
 
+// add an entry to the nextIndex 
+// (the nextIndex let's you look up the children of a parent commit)
+CommitDB.prototype._addNextIndex = function(parent, child, cb) {
+    var key = ['n', parent];
+    var children;
+    this.db.get(key, function(err, data) {
+        if(err) {
+            if(!err.notFound) return cb(err);
+            children = [child];
+        } else {
+            children = data;
+            children.push(child);
+        }
+        this.db.put(key, children, function(err) {
+            if(err) return cb(err);
+            cb(null, children);
+        });
+    });
+};
+
+CommitDB.prototype._addNextIndexes = function(parents, child, cb) {
+    async.eachSeries(parents, function(parent, cb) {
+        this.addNextIndex(parent, child, cb);
+    }, function(err) {
+        if(err) return cb(err);
+        cb(null);
+    });
+}
+
 // actually commit
 CommitDB.prototype._commit = function(value, opts, cb) {
 
@@ -92,6 +114,7 @@ CommitDB.prototype._commit = function(value, opts, cb) {
     var key = uuid();
     var doc = {meta: meta, value: value};
 
+    var isTail = false;
     var ops = []
     // add the commit
     ops.push({type: 'put', key: ['c', key], value: doc});
@@ -107,6 +130,7 @@ CommitDB.prototype._commit = function(value, opts, cb) {
     // if this is the tail then write it
     if(!opts.prev || !opts.prev.length) {
         ops.push({type: 'put', key: 'tail', value: key});
+        isTail = true;
     }
 
     this.db.batch(ops, function(err) {
@@ -117,13 +141,19 @@ CommitDB.prototype._commit = function(value, opts, cb) {
         } 
         if(!this.headCache) this.headCache = {};
         this.headCache[key] = true;
-        if(!opts.prev || !opts.prev.length) {
-            this.tailCache = key;
-        }
         if(!opts.stay) {
             this.cur = key;
         }
-        cb(null, key, meta);
+        if(isTail) {
+            this.tailCache = key;
+            cb(null, key, meta);
+        } else {
+            // if this is not the tail then add a nextIndex
+            this._addNextIndexes(opts.prev, key, function(err) {
+                if(err) return cb(err);
+                cb(null, key, meta);
+            });
+        }
     }.bind(this));
 };
 
@@ -140,40 +170,192 @@ CommitDB.prototype.del = function(key, opts) {
     // ToDo implement
 };
 
+// get a commit
+CommitDB.prototype.get = function(key, cb) {
+    if(typeof key === 'function') {
+        cb = key;
+        key = this.cur;
+    }
+    if(!key) return cb(new Error("Either specify or check out a commit"));
+    this._get(key, cb);
+};
+
+CommitDB.prototype._get = function(key, cb) {
+    this.db.get(['c', key], function(err, data) {
+        if(err) {
+            if(err.notFound) return cb(new Error("No such commit: " + key));
+            return cb(err);
+        }
+        if(!data || !data.meta) {
+            return cb(new Error("Encountered invalid commit: " + key));
+        }
+        cb(null, data);
+    });
+};
+
+// get prev commit(s) (from current checkout or specified commit)
+CommitDB.prototype.prev = function(key, cb) {
+    if(typeof key === 'function') {
+        cb = key;
+        key = this.cur;
+    } else if(typeof key === 'object' && key.prev) {
+        return this.get(key.prev, cb);
+    };
+    if(!key) return cb(new Error("Either specify or check out a commit"));
+    this._prev(key, cb);
+};
+
+CommitDB.prototype._prev = function(key, cb) {
+    var self = this;
+    this._get(key, function(err, data) {
+        if(err) return cb(err);
+        if(!data.meta.prev || !data.meta.prev.length) {
+            return cb(new Error("There is no previous commit. This must be the tail."));
+        }
+        var prevs = [];
+        async.eachSeries(data.meta.prev, function(prev) {
+            self._get(prev, function(err, data) {
+                if(err) return cb(err);
+                prevs.push(data);
+            });
+        }, function(err) {
+            if(err) return cb(err);
+            cb(null, prevs;
+        });
+
+    });
+};
+
+// get next commit(s) (from current checkout or specified commit)
+CommitDB.prototype.next = function(key, cb) {
+    if(typeof key === 'function') {
+        cb = key;
+        key = this.cur;
+    }
+    if(!key) return cb(new Error("Either specify or check out a commit"));
+    this._next(key, cb);
+};
+
+CommitDB.prototype._next = function(key, cb) {
+    var self = this;
+    this._nextKeys(key, function(err, nextKeys) {
+        if(err) return cb(err);
+        var commits = [];
+        async.eachSeries(nextKeys, function(nextKey) {
+            self.db.get(nextKey, function(err, data) {
+                if(err) return cb(err);
+                commits.push(data);
+            });
+        }, function(err) {
+            if(err) return cb(err);
+            cb(null, commits);
+        });
+    });
+};
+
+// get keys of next commit(s)
+CommitDB.prototype.nextKeys = function(key, cb) {
+    if(typeof key === 'function') {
+        cb = key;
+        key = this.cur;
+    }
+    this._nextKeys(key, cb);    
+};
+
+// get keys of next commit(s)
+CommitDB.prototype._nextKeys = function(key, cb) {
+    this.db.get(['n', key], function(err, nextKeys) {
+        if(err) {
+            if(err.notFound) return cb(new Error("There is no next commit. Commit must be a head."));
+            return cb(err);
+        }
+        cb(null, nextKeys);
+    });
+};
+
 // retrieve stored counts
 CommitDB.prototype.getCount = function(key, cb) {
 
 };
 
-// stream of previous commits, starting at current commit
-// (or starting at current checked out commit if not specified)
+// stream of previous commits
 CommitDB.prototype.prevStream = function(commit, opts) {
     opts = xtend({
-        preventDoubles: true // prevent the same 
+        preventDoubles: true, // prevent the same key from being streamed twice
+        idOnly: false // only output IDs of commits
     }, opts || {});
     commit = commit || this.cur;
     if(!commit) throw new Error("prevStream needs a commit as a starting point");
 
+    var keys = {}; // already processed keys
     var queue = [commit];
 
+    var i;
+    var self = this;
+    function getPrevs(commit, cb) {
+        self._get(commit, function(err, data) {
+            if(err) return cb(err);
+            if(opts.preventDoubles) {
+                for(i=0; i < data.meta.prev.length; i++) {
+                    if(keys[data.meta.prev[i]]) continue;
+                    keys[data.meta.prev[i]] = true;
+                    queue.push(data.meta.prev[i]);
+                }
+            } else {
+                queue = queue.concat(data.meta.prev);
+            }
+
+            data.meta.commit = commit;
+            cb(null, data, commit);
+        });
+    }
+
+    return from.obj(function(size, next) {
+        if(queue.length) {
+            getPrevs(queue.shift(), function(err, data, c) {
+                if(err) return next(err);
+                if(c === commit) return;
+                if(opts.idOnly) {
+                    next(null, c);
+                } else {
+                    next(null, data);
+                }
+            });
+        } else {
+            next(null, null);
+        }
+    });
+}
+
+// stream of next commits
+CommitDB.prototype.nextStream = function(commit) {
+    opts = xtend({
+        preventDoubles: true // prevent the same key from being streamed twice
+    }, opts || {});
+    commit = commit || this.cur;
+    if(!commit) throw new Error("prevStream needs a commit as a starting point");
+
+    var keys = {}; // already processed keys
+    var queue = [commit];
+
+    var i;
     var self = this;
     function getCommit(commit, cb) {
-        self.db.get(['c', commit], function(err, data) {
-            if(err) {
-                if(!err.notFound) return cb(err);
-                return cb(new Error("commit "+commit+" not found"));
+        self._get(commit, function(err, data) {
+            if(opts.preventDoubles) {
+                for(i=0; i < data.meta.prev.length; i++) {
+                    if(keys[data.meta.prev[i]]) continue;
+                    keys[data.meta.prev[i]] = true;
+                    queue.push(data.meta.prev[i]);
+                }
+            } else {
+                queue = queue.concat(data.meta.prev);
             }
 
-            if(!data || !data.meta) {
-                return cb(new Error("encountered invalid commit"));
-            }
-
-            queue = queue.concat(data.meta.prev);
             data.meta.commit = commit;
             cb(null, data);
         });
     }
-
 
     return from.obj(function(size, next) {
         if(queue.length) {
@@ -182,12 +364,6 @@ CommitDB.prototype.prevStream = function(commit, opts) {
             next(null, null);
         }
     });
-}
-
-// stream of next commits, starting at current commit
-// (or starting at current checked out commit if not specified)
-CommitDB.prototype.nextStream = function(commit) {
-
 }
 
 // stream of heads

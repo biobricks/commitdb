@@ -3,17 +3,17 @@ IN PROGRESS! DO NOT EXPECT ANY OF THIS TO WORK!
 
 commitdb is used for tracking the commit history of a single project/entity. 
 
-commitdb only tracks metadata. The actual data should be stored elsewhere.
+commitdb allows multiple heads and does not force you to merge heads, but allows only one tail.
 
-commitdb keeps indexes that speed up the following queries:
+commitdb only tracks metadata. The actual data should be stored elsewhere. Since commitdb does not know about the data it does not use hashes, instead it uses v4 uuids.
 
-* Stream heads
-* Stream previous commits in order starting at specified commit
+# ToDo
 
-and is intrinsically fast for:
-
-* Stream future commits in order starting at specified commit
-
+* implement nextStream
+* write better tests
+* implement hooks
+* implement counts
+* implement rewrite (change the contents of a commit)
 
 
 # Hooks
