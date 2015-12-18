@@ -2,6 +2,7 @@
 var util = require('util');
 var xtend = require('xtend');
 var uuid = require('uuid').v4;
+var async = require('async');
 var from = require('from2');
 var defaults = require('levelup-defaults');
 var bytewise = require('bytewise');
@@ -75,6 +76,7 @@ CommitDB.prototype.commit = function(value, opts, cb) {
 CommitDB.prototype._addNextIndex = function(parent, child, cb) {
     var key = ['n', parent];
     var children;
+    var self = this;
     this.db.get(key, function(err, data) {
         if(err) {
             if(!err.notFound) return cb(err);
@@ -83,7 +85,7 @@ CommitDB.prototype._addNextIndex = function(parent, child, cb) {
             children = data;
             children.push(child);
         }
-        this.db.put(key, children, function(err) {
+        self.db.put(key, children, function(err) {
             if(err) return cb(err);
             cb(null, children);
         });
@@ -91,8 +93,9 @@ CommitDB.prototype._addNextIndex = function(parent, child, cb) {
 };
 
 CommitDB.prototype._addNextIndexes = function(parents, child, cb) {
+    var self = this;
     async.eachSeries(parents, function(parent, cb) {
-        this.addNextIndex(parent, child, cb);
+        self._addNextIndex(parent, child, cb);
     }, function(err) {
         if(err) return cb(err);
         cb(null);
@@ -220,7 +223,7 @@ CommitDB.prototype._prev = function(key, cb) {
             });
         }, function(err) {
             if(err) return cb(err);
-            cb(null, prevs;
+            cb(null, prevs);
         });
 
     });
@@ -280,20 +283,31 @@ CommitDB.prototype.getCount = function(key, cb) {
 
 // stream of previous commits
 CommitDB.prototype.prevStream = function(commit, opts) {
+    if(typeof commit === 'object') {
+        opts = commit;
+        commit = null;
+    }
+
     opts = xtend({
         preventDoubles: true, // prevent the same key from being streamed twice
         idOnly: false // only output IDs of commits
     }, opts || {});
+
     commit = commit || this.cur;
     if(!commit) throw new Error("prevStream needs a commit as a starting point");
+    return this._prevStream(commit, opts);
+};
+
+
+CommitDB.prototype._prevStream = function(commit, opts) {
 
     var keys = {}; // already processed keys
     var queue = [commit];
 
     var i;
     var self = this;
-    function getPrevs(commit, cb) {
-        self._get(commit, function(err, data) {
+    function getPrevs(c, cb) {
+        self._get(c, function(err, data) {
             if(err) return cb(err);
             if(opts.preventDoubles) {
                 for(i=0; i < data.meta.prev.length; i++) {
@@ -304,9 +318,12 @@ CommitDB.prototype.prevStream = function(commit, opts) {
             } else {
                 queue = queue.concat(data.meta.prev);
             }
-
-            data.meta.commit = commit;
-            cb(null, data, commit);
+            // skip the current commit
+            if(c === commit) {
+                return getPrevs(queue.shift(), cb);
+            }
+            data.meta.commit = c;
+            cb(null, data, c);
         });
     }
 
@@ -314,7 +331,6 @@ CommitDB.prototype.prevStream = function(commit, opts) {
         if(queue.length) {
             getPrevs(queue.shift(), function(err, data, c) {
                 if(err) return next(err);
-                if(c === commit) return;
                 if(opts.idOnly) {
                     next(null, c);
                 } else {

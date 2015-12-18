@@ -12,7 +12,14 @@ var db = commitdb(rawdb, {
 
 var a = [
   {foo: 1},
-  {foo: 2}
+  {foo: 2},
+  {foo: 3},
+  {foo: 4},
+  {foo: 5},
+  {foo: 6},
+  {foo: 7},
+  {foo: 8},
+  {foo: 9}
 ];
 
 async.eachSeries(a, function(o, cb) {
@@ -30,7 +37,9 @@ async.eachSeries(a, function(o, cb) {
         console.log("Tail:", tail);
     });
     
-    var s = db.prevStream();
+    var s = db.prevStream({
+        idOnly: true
+    });
     s.on('data', function(data) {
         console.log(data);
     });
