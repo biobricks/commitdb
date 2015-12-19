@@ -21,7 +21,8 @@ function CommitDB(db, opts) {
     EventEmitter.call(this);
 
     this.opts = xtend(opts || {}, {
-        cache: true // you can turn off caching of heads and tail
+        cache: true, // you can turn off caching of heads and tail
+        hydra: true // turn off to disallow multiple heads ToDo
     });
     if(!this.opts.count) {
         this.opts.count = [];
@@ -49,7 +50,9 @@ CommitDB.prototype.commit = function(value, opts, cb) {
     opts = xtend({
         prev: [], // use prev as parent, rather than this.cur (can be array)
         unify: false, // if true, this commit uses all current heads as prev
-        stay: false // if true then commit won't check out the current commit
+        stay: false, // if true then commit won't check out the current commit
+        id: undefined, // you can supply your own commit id (e.g. use a hash)
+        meta: undefined // object of properties to store in meta-data
     }, opts || {});
 
     var self = this;
@@ -65,6 +68,9 @@ CommitDB.prototype.commit = function(value, opts, cb) {
             if(this.cur) {
                 opts.prev = [this.cur];
             }
+        }
+        if(typeof opts.prev === 'string') {
+            opts.prev = [opts.prev];
         }
         if(!opts.prev || !opts.prev.length) {
             // sanity check
@@ -92,7 +98,16 @@ CommitDB.prototype._commit = function(value, opts, cb) {
         opts.prev = [];
     }
 
-    var key = uuid();
+    if(typeof opts.meta === 'object') {
+        var reserved = ['prev', 'time'];
+        var k;
+        for(k in opts.meta) {
+            if(reserved.indexOf(k) > -1) continue;
+            doc[k] = opts.meta[k];
+        }
+    }
+
+    var key = opts.id || uuid();
     doc.value = value;
 
     var isTail = false;
@@ -137,6 +152,99 @@ CommitDB.prototype._commit = function(value, opts, cb) {
         }
     }.bind(this));
 };
+
+// just some syntactic sugar for merging
+// calling without any prevs merges all heads
+CommitDB.prototype.merge = function(value, prevs, cb) {
+    var opts = {};
+    if(typeof prevs === 'function') {
+        cb = prevs;
+        opts.unify = true;
+    } else {
+        opts.prevs = prevs;
+    }
+    this.commit(value, opts, cb);
+}
+
+// Revert to an old commit
+// This just creates a new commit with the value of the old commit
+// and marks the new commit as a revert from the old commit
+// by setting .revertedFrom to the id of the previous commit
+// takes the same opts as .commit
+CommitDB.prototype.revert = function(toCommit, opts, cb) {
+    if(typeof opts === 'function') {
+        cb = opts;
+        opts = {};
+    }
+    opts.meta = opts.meta || {};
+    opts.meta.revertedFrom = toCommit;
+
+    this._get(toCommit, function(err, doc) {
+        if(err) return cb(err);
+        this.commit(doc.value, opts, cb);
+    });
+}
+
+// is this commit a merge?
+// (does it have multiple prevs)
+CommitDB.prototype.isMerge = function(commit, cb) {
+ // ToDo
+}
+
+// is this commit a fork?
+// (does it have multiple nexts)
+CommitDB.prototype.isFork = function(commit, cb) {
+ // ToDo
+}
+
+// is this commit a head?
+CommitDB.prototype.isHead = function(commit, cb) {
+ // ToDo
+}
+
+// is this commit the tail?
+// (does it not have any prevs?)
+// this function can be used as sync if you pass a commit object
+// rather than a commit id
+CommitDB.prototype.isTail = function(commit, cb) {
+    if(typeof commit === 'function') {
+        cb = commit;
+        commit = null;
+    }
+    commit = commit || this.cur;
+    if(!commit) {
+        var err = new Error("You must either check out a commit or supply a commit id");
+        if(cb) return cb(err);
+        throw err;
+    }
+    return this._isTail(commit, cb);
+}
+
+CommitDB.prototype._isTail = function(commit, cb) {
+    if(typeof commit === 'string') {
+        if(!cb) throw new Error("You must use a commit object, not a commit id, as argument if you plan to call this function synchronously");
+        this._get(commit, function(err, commit) {
+            if(err) return cb(err);
+            if(!commit.prev || !commit.prev.length) {
+                cb(null, true);
+            } else {
+                cb(null, false);
+            }
+        });
+    } else {
+        var ret;
+        if(!commit.prev || !commit.prev.length) {
+            ret = true;
+        } else {
+            ret = false;
+        }
+        if(cb) {
+            process.nextTick(function() {cb(null, ret)});
+        } else {
+            return ret;
+        }
+    }
+}
 
 // add an entry to the nextIndex 
 // (the nextIndex let's you look up the children of a parent commit)

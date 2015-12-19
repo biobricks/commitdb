@@ -9,12 +9,17 @@ commitdb only tracks metadata. The actual data should be stored elsewhere. Since
 
 # ToDo
 
+Change from uuid to: Hash of data + meta (including prev). The tail will seed the hash with a uuid.
+
 * implement nextStream
 * write better tests
 * implement hooks
 * implement counts
 * implement rewrite (change the contents of a commit)
 
+## Future
+
+* Signed commits?
 
 # Hooks
 
@@ -22,7 +27,11 @@ commitdb only tracks metadata. The actual data should be stored elsewhere. Since
 
 ## .on('commit')
 
+## .on('merge')
 
+## .on('fork')
+
+## .on('revert')
 
 # Counts
 
