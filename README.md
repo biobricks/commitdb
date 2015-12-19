@@ -9,13 +9,14 @@ commitdb only tracks metadata. The actual data should be stored elsewhere. Since
 
 # ToDo
 
-Change from uuid to: Hash of data + meta (including prev). The tail will seed the hash with a uuid.
-
-* implement nextStream
 * write better tests
-* implement hooks
 * implement counts
+* implement hooks
 * implement rewrite (change the contents of a commit)
+
+## Test cases
+
+* What if prev/nextStream and skip current and no prev/next?
 
 ## Future
 

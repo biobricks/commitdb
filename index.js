@@ -174,7 +174,7 @@ CommitDB.prototype._commit = function(value, opts, cb) {
 // calling without any prevs merges all heads
 CommitDB.prototype.merge = function(value, prevs, cb) {
     var opts = {};
-    if(typeof prevs === 'function') {
+    if(typeof prevs === 'function' || !prevs || !prevs.length) {
         cb = prevs;
         opts.unify = true;
     } else {
@@ -394,24 +394,34 @@ CommitDB.prototype._prev = function(key, cb) {
 };
 
 // get next commit(s) (from current checkout or specified commit)
-CommitDB.prototype.next = function(key, cb) {
+CommitDB.prototype.next = function(key, opts, cb) {
     if(typeof key === 'function') {
         cb = key;
         key = this.cur;
+    } else if(typeof opts === 'function') {
+        cb = opts;
+        opts = {};
     }
+    opts = xtend({
+        idOnly: false // only get next ids, not full objects
+    }, opts || {});
     if(!key) return cb(new Error("Either specify or check out a commit"));
-    this._next(key, cb);
+    if(opts.idOnly) {
+        this._nextIDs(key, cb);
+    } else {
+        this._next(key, cb);
+    }
 };
 
-CommitDB.prototype._next = function(key, cb) {
+CommitDB.prototype._next = function(id, cb) {
     var self = this;
-    this._nextKeys(key, function(err, nextKeys) {
+    this._nextIDs(id, function(err, nextIDs) {
         if(err) return cb(err);
         var commits = [];
-        async.eachSeries(nextKeys, function(nextKey) {
-            self.db.get(nextKey, function(err, data) {
+        async.eachSeries(nextIDs, function(nextID) {
+            self.db.get(nextID, function(err, doc) {
                 if(err) return cb(err);
-                commits.push(data);
+                commits.push(doc);
             });
         }, function(err) {
             if(err) return cb(err);
@@ -420,28 +430,20 @@ CommitDB.prototype._next = function(key, cb) {
     });
 };
 
-// get keys of next commit(s)
-CommitDB.prototype.nextKeys = function(key, cb) {
-    if(typeof key === 'function') {
-        cb = key;
-        key = this.cur;
-    }
-    this._nextKeys(key, cb);    
-};
 
-// get keys of next commit(s)
-CommitDB.prototype._nextKeys = function(key, cb) {
-    this.db.get(['n', key], function(err, nextKeys) {
+// get IDs of next commit(s)
+CommitDB.prototype._nextIDs = function(id, cb) {
+    this.db.get(['n', id], function(err, nextIDs) {
         if(err) {
-            if(err.notFound) return cb(new Error("There is no next commit. Commit must be a head."));
+            if(err.notFound) return cb(null, []);
             return cb(err);
         }
-        cb(null, nextKeys);
+        cb(null, nextIDs);
     });
 };
 
 // retrieve stored counts
-CommitDB.prototype.getCount = function(key, cb) {
+CommitDB.prototype.getCount = function(id, cb) {
 
 };
 
@@ -454,7 +456,8 @@ CommitDB.prototype.prevStream = function(commit, opts) {
 
     opts = xtend({
         preventDoubles: true, // prevent the same key from being streamed twice
-        idOnly: false // only output IDs of commits
+        idOnly: false, // only output IDs of commits
+        skipCurrent: true // don't output the current commit (start with the prev)
     }, opts || {});
 
     commit = commit || this.cur;
@@ -483,8 +486,13 @@ CommitDB.prototype._prevStream = function(commit, opts) {
                 queue = queue.concat(data.prev);
             }
             // skip the current commit
-            if(c === commit) {
-                return getPrevs(queue.shift(), cb);
+            if(opts.skipCurrent && c === commit) {
+                if(queue.length) {
+                    getPrevs(queue.shift(), cb);
+                } else {
+                    cb(null, null);
+                }
+                return;
             }
             data.commit = c;
             cb(null, data, c);
@@ -493,12 +501,13 @@ CommitDB.prototype._prevStream = function(commit, opts) {
 
     return from.obj(function(size, next) {
         if(queue.length) {
-            getPrevs(queue.shift(), function(err, data, c) {
+            getPrevs(queue.shift(), function(err, doc, c) {
                 if(err) return next(err);
+                if(doc === null) return next(null, null);
                 if(opts.idOnly) {
                     next(null, c);
                 } else {
-                    next(null, data);
+                    next(null, doc);
                 }
             });
         } else {
@@ -508,38 +517,73 @@ CommitDB.prototype._prevStream = function(commit, opts) {
 }
 
 // stream of next commits
-CommitDB.prototype.nextStream = function(commit) {
+CommitDB.prototype.nextStream = function(commit, opts) {
+    if(typeof commit === 'object') {
+        opts = commit;
+        commit = null;
+    }
     opts = xtend({
-        preventDoubles: true // prevent the same key from being streamed twice
+        preventDoubles: true, // prevent the same key from being streamed twice
+        idOnly: false, // only output IDs of commits
+        skipCurrent: true // don't output the current commit (start with the next)
     }, opts || {});
+
     commit = commit || this.cur;
-    if(!commit) throw new Error("prevStream needs a commit as a starting point");
+    if(!commit) throw new Error("nextStream needs a commit as a starting point");
+    return this._nextStream(commit, opts);
+}
+
+CommitDB.prototype._nextStream = function(commit, opts) {
 
     var keys = {}; // already processed keys
     var queue = [commit];
+    var first = true;
 
     var i;
     var self = this;
-    function getCommit(commit, cb) {
-        self._get(commit, function(err, data) {
+
+    function getNext(c, cb) {
+        self._nextIDs(c, function(err, nextIDs) {
+
+            if(err) return cb(err);
             if(opts.preventDoubles) {
-                for(i=0; i < data.prev.length; i++) {
-                    if(keys[data.prev[i]]) continue;
-                    keys[data.prev[i]] = true;
-                    queue.push(data.prev[i]);
+                for(i=0; i < nextIDs.length; i++) {
+                    if(keys[nextIDs[i]]) continue;
+                    keys[nextIDs[i]] = true;
+                    queue.push(nextIDs[i]);
                 }
             } else {
-                queue = queue.concat(data.prev);
+                queue = queue.concat(nextIDs);
             }
 
-            data.commit = commit;
-            cb(null, data);
+            if(first && opts.skipCurrent) {
+                if(queue.length) {
+                    getNext(queue.shift(), cb);
+                } else {
+                    cb(null, null);
+                }
+            } else {
+                if(opts.idOnly) {
+                    cb(null, c);
+                } else {
+                    self._get(c, function(err, doc) {
+                        if(err) return cb(err);
+                        cb(null, doc);
+                    });
+                }                
+            }
+            first = false;
         });
+        
     }
 
     return from.obj(function(size, next) {
         if(queue.length) {
-            getCommit(queue.shift(), next);
+            getNext(queue.shift(), function(err, doc) {
+                if(err) return next(err, null);
+                if(doc === null) return next(null, null);
+                next(null, doc);
+            });
         } else {
             next(null, null);
         }
