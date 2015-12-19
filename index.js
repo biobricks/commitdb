@@ -1,5 +1,6 @@
 
 var util = require('util');
+var crypto = require('crypto');
 var xtend = require('xtend');
 var uuid = require('uuid').v4;
 var async = require('async');
@@ -86,6 +87,18 @@ CommitDB.prototype.commit = function(value, opts, cb) {
     }
 };
 
+CommitDB.prototype._genHash = function(doc) {
+    var h = crypto.createHash('sha256');
+    if(!doc.prevs || !doc.prevs.length) {
+        // seed the tail's hash with a uuid
+        // to avoid having the same first-commit hash for projects
+        // starting with the same data
+        h.update(uuid());
+    }
+    h.update(JSON.stringify(doc));
+    return h.digest('hex');
+};
+
 // actually commit
 CommitDB.prototype._commit = function(value, opts, cb) {
 
@@ -107,10 +120,15 @@ CommitDB.prototype._commit = function(value, opts, cb) {
         }
     }
 
-    var key = opts.id || uuid();
+    // is this the tail?
+    var isTail = false;
+    if(!opts.prev || !opts.prev.length) {
+        isTail = true;
+    }
+
+    var key = this._genHash(doc);
     doc.value = value;
 
-    var isTail = false;
     var ops = []
     // add the commit
     ops.push({type: 'put', key: ['c', key], value: doc});
@@ -124,9 +142,8 @@ CommitDB.prototype._commit = function(value, opts, cb) {
     ops.push({type: 'put', key: ['h', key], value: null});
 
     // if this is the tail then write it
-    if(!opts.prev || !opts.prev.length) {
+    if(isTail) {
         ops.push({type: 'put', key: 'tail', value: key});
-        isTail = true;
     }
 
     this.db.batch(ops, function(err) {
