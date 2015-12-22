@@ -9,13 +9,13 @@ var db = commitdb(rawdb);
 db.commit({
   foo: 1,
   comment: "Initial commit"
-}, function(err, firstKey) {
+}, function(err, firstID) {
   if(err) return cb(err);
 
   db.commit({
     foo: 2,
     comment: "Incremented foo"
-  }, function(err, secondKey) {
+  }, function(err, secondID) {
     if(err) return cb(err);
 
 
@@ -23,16 +23,16 @@ db.commit({
       bar: 3,
       comment: "Changed foo to bar and incremented"
     }, {
-      prev: secondKey
-    }, function(err, thirdKeyB) {
+      prev: secondID
+    }, function(err, thirdIDb) {
       if(err) return cb(err);
 
       db.commit({
         foo: 3,
         comment: "Incremented foo again"
       }, {
-        prev: secondKey
-      }, function(err, thirdKeyA) {
+        prev: secondID
+      }, function(err, thirdIDa) {
         if(err) return cb(err);
 
         // now we have two heads
@@ -41,7 +41,7 @@ db.commit({
         db.merge({
           foobar: 3,
           comment: "Merge: Compromised on name"
-        }, function(err, forthKey) {
+        }, function(err, forthID) {
           if(err) return cb(err);
 
           db.tail(function(err, tail) {
