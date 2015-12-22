@@ -1,5 +1,5 @@
 {
-  "name": "commitdb",
+  "name": "CommitDB",
   "version": "0.0.1",
   "description": "commit history using leveldb",
   "main": "index.js",

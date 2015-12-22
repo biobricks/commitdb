@@ -186,11 +186,19 @@ db.revert(
 });
 ```
 
-## .isFork _not implemented!_
+## .isFork 
 
-ToDo
+Check if a commit is a fork (multiple other commits have it as their prev).
 
-Check if a commit is a fork (multiple other commits have it as their prev)
+```
+db.isFork(
+  'f8b97d1adb133bac5658e076f3db2f6c2d91040830af8a0f0a9fc0ef13df850a',
+  function(err, isFork) {
+    console.log("is it a fork:", isFork);
+});
+```
+
+db.isFork can be called with a commit object instead of a commit id or with no commit at all in which case the currently checked out commit is used.
 
 ## .isTail
 
@@ -225,7 +233,7 @@ var isTail;
 console.log("is tail checked out:", db.isTail());
 
 
-// sync calling without cache
+// sync calling without cache needs the commit object
 db.get(function(err, obj) { // get currently checked out commit object
   if(err) return console.error("error:", err);
 
@@ -233,25 +241,20 @@ db.get(function(err, obj) { // get currently checked out commit object
 });
 ```
 
-## .isHead _not implemented!_
-
-ToDo
+## .isHead
 
 Check if a commit is a head (no other commits have it as their prev).
 
-You can optionally call isHead synchronously under some circumstances. Usage is the same as for .isTail
+You can optionally call isHead synchronously if cache is on. Usage is the same as for .isTail
 
-## .isMerge _not implemented!_
-
-ToDo
+## .isMerge
 
 Check if a commit is a merge (it has multiple prevs)
 
-You can optionally call isMerge synchronously if you supply a commit object instead of a commit id.
+You can optionally call isMerge synchronously if you supply a commit object instead of a commit id. Usage is the same as .isTail
 
 # ToDo
 
-* implement isFork, isMerge, isHead
 * implement counts
 * implement hooks
 * write better tests

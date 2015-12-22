@@ -233,21 +233,105 @@ CommitDB.prototype.revert = function(toCommit, opts, cb) {
     });
 }
 
+
+// re-used logic for check functions
+CommitDB.prototype._baseCheck = function(commit, cb, callback) {
+    if(typeof commit === 'function') {
+        cb = commit;
+        commit = null;
+    }
+    commit = commit || this.cur;
+    if(!commit) {
+        var err = new Error("You must specify or check out a commit");
+        if(cb) return cb(err);
+        throw err;
+    }
+    return callback(commit, cb);
+}
+
 // is this commit a merge?
 // (does it have multiple prevs)
 CommitDB.prototype.isMerge = function(commit, cb) {
- // ToDo
+    return this._baseCheck(commit, cb, this._isMerge);
 }
+
+CommitDB.prototype._isMerge = function(commit, cb) {
+    function isObjMerge(obj) {
+        return (commit.prevs && commit.prevs.length > 1) ? true : false;
+    }
+
+    if(typeof commit === 'object') {
+        if(cb) {
+            return process.nextTick(function() {
+                cb(null, isObjMerge(commit));
+            });
+        }
+        return isObjMerge(commit);
+    }
+    if(!cb) throw new Error("You must use a commit object, not a commit id, as argument if you plan to call this function synchronously");
+
+    this._get(commit, function(err, obj) {
+        if(err) return cb(err);
+        
+        cb(null, isObjMerge(obj));
+    });
+}
+
 
 // is this commit a fork?
 // (does it have multiple nexts)
 CommitDB.prototype.isFork = function(commit, cb) {
- // ToDo
+    return this._baseCheck(commit, cb, this._isFork);
+}
+
+
+CommitDB.prototype._isFork = function(commit, cb) {
+    if(typeof commit === 'object') {
+        if(!commit.id) return cb(new Error("commit object has no .id"));
+        commit = commit.id;
+    }
+
+    this._nextIDs(commit, function(err, ids) {
+        if(err) return cb(err);
+        
+        if(ids && ids.length > 1) {
+            cb(null, true);
+        } else {
+            cb(null, false);
+        }
+    });
 }
 
 // is this commit a head?
 CommitDB.prototype.isHead = function(commit, cb) {
- // ToDo
+    return this._baseCheck(commit, cb, this._isHead);
+}
+
+CommitDB.prototype._isHead = function(commit, cb) {
+
+    if(typeof commit === 'object') {
+        if(!commit.id) return cb(new Error("commit object has no .id"));
+        commit = commit.id;
+    }
+    if(this.opts.cache && this.headCache) {
+        var ret = false;
+        if(this.headCache[commit]) {
+            ret = true;
+        }
+        if(cb) return process.nextTick(function() {cb(null, ret)});
+        return ret;
+    }
+    if(!cb) throw new Error("Cache must be enabled and initialized in order to call this function synchronously");
+
+    this._getHead(commit, function(err, commit) {
+        if(err) return cb(err);
+        
+        if(commit) {
+            cb(null, true);
+        } else {
+            cb(null, false);            
+        }
+    });
 }
 
 // is this commit the tail?
@@ -269,6 +353,10 @@ CommitDB.prototype.isTail = function(commit, cb) {
 }
 
 CommitDB.prototype._isTail = function(commit, cb) {
+    function isObjTail(obj) {
+        return (!commit.prev || !commit.prev.length) ? true : false;
+    }
+
     if(typeof commit === 'string') {
         if(this.opts.cache && this.tailCache) {
             var ret = (this.tailCache === this.commit);
@@ -278,19 +366,12 @@ CommitDB.prototype._isTail = function(commit, cb) {
         if(!cb) throw new Error("You must use a commit object, not a commit id, as argument if you plan to call this function synchronously");
         this._get(commit, function(err, commit) {
             if(err) return cb(err);
-            if(!commit.prev || !commit.prev.length) {
-                cb(null, true);
-            } else {
-                cb(null, false);
-            }
+
+            cb(null, isObjTail(commit));
+
         });
     } else {
-        var ret;
-        if(!commit.prev || !commit.prev.length) {
-            ret = true;
-        } else {
-            ret = false;
-        }
+        var ret = isObjTail(commit);
         if(cb) {
             process.nextTick(function() {cb(null, ret)});
         } else {
@@ -654,7 +735,19 @@ CommitDB.prototype.headStream = function() {
         gt: ['h'],
         lt: ['h\uffff']
     });
-}
+};
+
+// get a head
+CommitDB.prototype._getHead = function(id, cb) {
+    this.db.get(['h', id], function(err, obj) {
+        if(err) {
+            if(err.notFound) return cb(null, null);
+            return cb(err);
+        }
+        obj.id = id;
+        cb(null, obj);
+    });
+};
 
 // get array of current heads
 CommitDB.prototype.heads = function(cb) {
