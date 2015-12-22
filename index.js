@@ -277,6 +277,26 @@ CommitDB.prototype._isMerge = function(commit, cb) {
     });
 }
 
+// is this a revert from a previous commit?
+CommitDB.prototype.isRevert = function(commit, cb) {
+    return this._baseCheck(commit, cb, this._isFork);
+}
+
+CommitDB.prototype._isRevert = function(commit, cb) {
+    var ret;
+    if(typeof commit === 'object') {
+        ret = commit.revertedFrom || false;
+        if(cb) return process.nextTick(function() {cb(null, ret)});
+        return ret;
+    }
+    if(!cb) throw new Error("You must use a commit object, not a commit id, as argument if you plan to call this function synchronously");
+    
+    this._get(commit, function(err, obj) {
+        if(err) return cb(err);
+
+        cb(null, obj.revertedFrom || false);
+    });
+}
 
 // is this commit a fork?
 // (does it have multiple nexts)

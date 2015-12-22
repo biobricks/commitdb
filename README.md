@@ -251,7 +251,17 @@ You can optionally call isHead synchronously if cache is on. Usage is the same a
 
 Check if a commit is a merge (it has multiple prevs)
 
-You can optionally call isMerge synchronously if you supply a commit object instead of a commit id. Usage is the same as .isTail
+You can optionally call isMerge synchronously if you supply a commit object instead of a commit id. 
+
+Usage is the same as .isTail
+
+## .isRevert
+
+Check if a commit is a revert from a previous commit.
+
+You can optionally call isMerge synchronously if you supply a commit object instead of a commit id. 
+
+Usage is the same as .isTail except that if the commit _is_ a revert then .isRevert returns the commit id of the commit that was reverted from.
 
 # ToDo
 
