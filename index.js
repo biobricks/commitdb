@@ -46,8 +46,34 @@ util.inherits(CommitDB, EventEmitter);
 
 // load heads and tails from cache
 CommitDB.prototype.updateCache = function(cb) {
-    // ToDo
-    return new Error("not implemented");
+    if(!this.opts.cache) return cb();
+
+    this.headCache = null;
+    this.tailCache = null;
+    var self = this;
+    this.heads(function(err, heads) {
+        if(!err) return cb(err);
+        self.tail(cb);
+    });
+}
+
+// load heads and tails into cache
+CommitDB.prototype.initCache = function(cb) {
+    if(!this.opts.cache) return cb();
+
+    if(!this.headCache && !this.tailCache) {
+        return this.updateCache(cb);
+    }
+
+    if(!this.headCache) {
+        return this.heads(cb);
+    }
+
+    if(!this.tailCache) {
+        return this.tail(cb);
+    }
+
+    cb();
 }
 
 // return currently checked out commit id or null if none
@@ -156,7 +182,12 @@ CommitDB.prototype._commit = function(value, opts, cb) {
 
     // if this is the tail then write it
     if(isTail) {
-        ops.push({type: 'put', key: 'tail', value: key});
+        ops.push({type: 'put', key: ['tail'], value: key});
+    }
+
+    // if we are changing the checked out commit, remember it
+    if(!opts.stay) {
+        ops.push({type: 'put', key: ['lastCheckout'], value: key});
     }
 
     this.db.batch(ops, function(err) {
@@ -470,33 +501,86 @@ CommitDB.prototype._get = function(id, cb) {
 };
 
 // check out a commit
-CommitDB.prototype.checkout = function(key, opts, cb) {
-    if(typeof opts === 'function') {
+CommitDB.prototype.checkout = function(commit, opts, cb) {
+    if(typeof commit === 'function') {
+        cb = commit;
+        opts = {};
+        commit = null;
+    } else if(typeof opts === 'function') {
         cb = opts;
         opts = null;
     }
+
+    if(typeof commit === 'object') {
+        commit = commit.id;
+    }
+    var self = this;
+    if(this.opts.cache) {
+        this.initCache(function(err) {
+            if(err) return cb(err);
+            self._checkout(commit, opts, cb);
+        });
+    } else {
+        self._checkout(commit, opts, cb);
+    }
+}
+
+CommitDB.prototype._checkout = function(id, opts, cb) {
+    var self = this;
     opts = xtend({
-        verify: true // check if commit exists and return commit
+        fetch: true, // check if commit exists and return commit
+        remember: true // remember most recently checked out commit
     }, opts || {});
-    if(!key) {
-        return cb(new Error("You must specify which commit to check out"));
-    }
-    this._checkout(key, opts, cb);
-}
 
-CommitDB.prototype._checkout = function(key, opts, cb) {
-    if(!opts.verify) {
-        this.cur = key;
-        if(cb) cb(null);
-        return;
+    cb = cb || function(){};
+
+    // if no id supplied, attempt to fetch saved checkout
+    if(!id) {
+        this._getLastCheckout(function(err, id) {
+            if(err) return cb(err);
+            if(!id) return cb(null, null);
+            opts.remember = false;
+            self._checkout(id, opts, cb);
+        });
     }
-    this._get(key, function(err, data) {
+
+    function finalize(id, data, cb) {
+        self.cur = id;
+        if(opts.remember) {
+            self._saveLastCheckout(id, function(err) {
+                if(err) return cb(err);
+                cb(null, data);
+            });
+        } else {
+            cb(null, data);
+        }
+    }
+
+    if(!opts.fetch) {
+        return finalize(id, null, cb);
+    }
+    this._get(id, function(err, data) {
         if(err) return cb(err);
-        this.cur = id;
-        cb(null, data);
+        finalize(id, data, cb);
     });
-}
+};
 
+// save a commit as being the last checked out commit
+// so the same commit can be checked out next time the db is loaded
+CommitDB.prototype._saveLastCheckout = function(id, cb) {
+    this.db.put(['lastCheckout'], id, cb);
+};
+
+// retrieve commit saved by _saveLastCheckout
+CommitDB.prototype._getlastCheckout = function(cb) {
+    this.db.get(['lastCheckout'], function(err, id) {
+        if(err) {
+            if(err.notFound) return cb(null, null);
+            return cb(err);
+        }
+        return cb(null, id);
+    });
+};
 
 // get prev commit(s) (from current checkout or specified commit)
 CommitDB.prototype.prev = function(key, opts, cb) {
@@ -808,7 +892,7 @@ CommitDB.prototype.tail = function(cb) {
             return this.tailCache;
         }
     } else {
-        this.db.get('tail', function(err, data) {
+        this.db.get(['tail'], function(err, data) {
             if(err) {
                 if(!err.notFound) {
                     return cb(err);

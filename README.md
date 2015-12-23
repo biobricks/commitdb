@@ -31,7 +31,6 @@ db.commit({
   }, function(err, secondID) {
     if(err) return cb(err);
 
-
     db.commit({
       bar: 3,
       comment: "Changed foo to bar and incremented"
@@ -96,7 +95,40 @@ var db = commitdb(levelup_instance, {
 
 If you have multiple processes accessing the same commitdb (e.g. using level-party) then you should turn caching off.
 
-If you open an existing commitdb and want to use caching then you should probably call db.updateCache after instantiating your commitdb to fill the cache. You don't have to do this, but some types of synchronous calling depend on the cache (sync calls to e.g. db.tail and db.heads) and will fail if the cache is empty. If you exclusively use async calls then don't worry about it.
+If you open an existing commitdb and want to use caching then you should probably call either db.checkout or db.updateCache after instantiating your commitdb to fill the cache. You don't have to do this, but some types of synchronous calling depend on the cache (sync calls to e.g. db.tail and db.heads) and will fail if the cache is empty. If you exclusively use async calls then don't worry about it.
+
+## .checkout
+
+Used to check out a commit. 
+
+CommitDB remembers which commit was previously checked out, even after closing and re-opening the database. If called with no arguments (other than callback) then the remembered commit will be checked out again. This is probably the first function you want to call immediately after initializing a commitdb instance based on an existing database.
+
+Check out remembered commit:
+
+```
+db.checkout(function(err, obj) {
+  if(err) return console.error(err);
+  // if no remembered commit exists then both err and obj will be null
+  console.log("Checked out commit:", obj.id);
+});
+```
+
+or check out a specified commit:
+
+```
+db.checkout(
+  'f8b97d1adb133bac5658e076f3db2f6c2d91040830af8a0f0a9fc0ef13df850a', {
+    fetch: true, // set to false don't fetch commit and skip check if commit exists
+    remember: true // don't remember that this was checked out
+  }, function(err, obj) {
+    if(err) return console.error(err);
+
+    console.log("checked out commit:", commit.id);
+})
+
+If the CommitDB instance was initialized with cache: true and the cache is uninitialized when checkout is called then the cache will be initialized.
+
+If fetch is false then the commit object will not be passed to the callback. Can be called synchronously if both fetch and remember are set to false.
 
 ## .commit
 
