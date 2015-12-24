@@ -127,6 +127,7 @@ db.checkout(
 
     console.log("checked out commit:", commit.id);
 })
+```
 
 If the CommitDB instance was initialized with cache: true and the cache is uninitialized when checkout is called then the cache will be initialized.
 
@@ -146,7 +147,7 @@ db.commit({
     if(err) return console.error("error:", err);
 
     console.log("committed as:", id);
-    console.log("checked out commit is:" db.current());
+    console.log("checked out commit is:", db.current());
 });
 ```
 
