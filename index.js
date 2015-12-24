@@ -731,17 +731,16 @@ CommitDB.prototype.prevStream = function(commit, opts) {
         commit = null;
     }
 
-    opts = xtend({
-        preventDoubles: true, // prevent the same key from being streamed twice
-        idOnly: false, // only output IDs of commits
-        skipCurrent: true // don't output the current commit (start with the prev)
-    }, opts || {});
-
     commit = commit || this.cur;
     return this._prevStream(commit, opts);
 };
 
 CommitDB.prototype._prevStream = function(commit, opts) {
+    opts = xtend({
+        preventDoubles: true, // prevent the same key from being streamed twice
+        idOnly: false, // only output IDs of commits
+        skipCurrent: true // don't output the current commit (start with the prev)
+    }, opts || {});
 
     var keys = {}; // already processed keys
     var queue = []
@@ -800,17 +799,17 @@ CommitDB.prototype.nextStream = function(commit, opts) {
         opts = commit;
         commit = null;
     }
-    opts = xtend({
-        preventDoubles: true, // prevent the same key from being streamed twice
-        idOnly: false, // only output IDs of commits
-        skipCurrent: true // don't output the current commit (start with the next)
-    }, opts || {});
 
     commit = commit || this.cur;
     return this._nextStream(commit, opts);
 }
 
 CommitDB.prototype._nextStream = function(commit, opts) {
+    opts = xtend({
+        preventDoubles: true, // prevent the same key from being streamed twice
+        idOnly: false, // only output IDs of commits
+        skipCurrent: true // don't output the current commit (start with the next)
+    }, opts || {});
 
     var keys = {}; // already processed keys
     var queue = [];
