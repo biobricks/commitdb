@@ -1,4 +1,5 @@
 [![NPM][npm-img]][npm-url]
+[![Build Status][ci-img]][ci-url]
 
 NOTE: This is not yet production-ready code. Expect bugs and API changes.
 
@@ -392,3 +393,8 @@ If the property being counted is a string, then a count for each unique string w
 Copyright 2015 BioBricks Foundation
 
 License AGPLv3
+
+[ci-img]: https://travis-ci.org/Juul/commitdb.svg
+[ci-url]: https://travis-ci.org/Juul/commitdb)
+[npm-img]: https://nodei.co/npm/commitdb.png
+[npm-url]: https://nodei.co/npm/commitdb/

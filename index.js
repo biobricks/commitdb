@@ -617,7 +617,7 @@ CommitDB.prototype._prev = function(commit, opts, cb) {
     }
 };
 
-CommitDB.protoype._getArray = function(ids, opts, cb) {
+CommitDB.prototype._getArray = function(ids, opts, cb) {
     var objs = [];
     async.eachSeries(ids, function(id) {
         self._get(id, function(err, obj) {
