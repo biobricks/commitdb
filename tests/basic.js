@@ -6,6 +6,8 @@ var test = require('tape');
 
 var rawdb = levelup(temp.mkdirSync());
 
+// basic usage: single commit followed by get
+
 test('basic', function(t) {
 
     var db = commitdb(rawdb);

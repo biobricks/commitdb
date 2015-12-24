@@ -3,13 +3,13 @@
 
 NOTE: This is not yet production-ready code. Expect bugs and API changes.
 
-commitdb keeps track of commit history for a single project/entity.
+CommitDB keeps track of commit history for a single project/entity.
 
-commitdb allows multiple heads (it does not force you to merge heads), but allows only one tail.
+CommitDB allows multiple heads (it does not force you to merge heads), but allows only one tail.
 
-commitdb only tracks metadata. The actual data should be stored elsewhere.
+CommitDB only tracks metadata. The actual data should be stored elsewhere.
 
-commitdb uses atomic commits and streams are pinned to the commit history as it looked when the stream was created. The worst that can happen is if someone creates a new commit, changing the head, while you're trying to merge all heads: You will end up having merged the old heads. There is no way to avoid this if you're planning to use commitdb in a decentralized setup. 
+CommitDB uses atomic commits and streams are pinned to the commit history as it looked when the stream was created. The worst that can happen is if someone creates a new commit, changing the head, while you're trying to merge all heads: You will end up having merged the old heads. There is no way to avoid this if you're planning to use CommitDB in a decentralized setup. 
 
 # Usage
 
@@ -21,6 +21,7 @@ var commitdb = require('commitdb');
 
 var rawdb = levelup('/tmp/foodb');
 var db = commitdb(rawdb);
+
 db.commit({
   foo: 1,
   comment: "Initial commit"
@@ -95,15 +96,15 @@ var db = commitdb(levelup_instance, {
 });
 ```
 
-If you have multiple processes accessing the same commitdb (e.g. using level-party) then you should turn caching off.
+If you have multiple processes accessing the same CommitDB (e.g. using level-party) then you should turn caching off.
 
-If you open an existing commitdb and want to use caching then you should probably call either db.checkout or db.updateCache after instantiating your commitdb to fill the cache. You don't have to do this, but some types of synchronous calling depend on the cache (sync calls to e.g. db.tail and db.heads) and will fail if the cache is empty. If you exclusively use async calls then don't worry about it.
+If you open an existing CommitDB and want to use caching then you should probably call either db.checkout or db.updateCache after instantiating your CommitDB to fill the cache. You don't have to do this, but some types of synchronous calling depend on the cache (sync calls to e.g. db.tail and db.heads) and will fail if the cache is empty. If you exclusively use async calls then don't worry about it.
 
 ## .checkout
 
 Used to check out a commit. 
 
-CommitDB remembers which commit was previously checked out, even after closing and re-opening the database. If called with no arguments (other than callback) then the remembered commit will be checked out again. This is probably the first function you want to call immediately after initializing a commitdb instance based on an existing database.
+CommitDB remembers which commit was previously checked out, even after closing and re-opening the database. If called with no arguments (other than callback) then the remembered commit will be checked out again. This is probably the first function you want to call immediately after initializing a CommitDB instance based on an existing database.
 
 Check out remembered commit:
 
@@ -132,6 +133,15 @@ db.checkout(
 If the CommitDB instance was initialized with cache: true and the cache is uninitialized when checkout is called then the cache will be initialized.
 
 If fetch is false then the commit object will not be passed to the callback. Can be called synchronously if both fetch and remember are set to false.
+
+## .current (sync)
+
+Synchronously return the currently checked out commit id:
+
+```
+var id = db.current();
+console.log("Checked out revision:", id);
+```
 
 ## .commit
 
@@ -343,7 +353,9 @@ a rewrite should add a new special "rewrite commit", since if it didn't then syn
 
 ## Test cases
 
-* What if prev/nextStream and skip current and no prev/next?
+* fork and merge
+* revert
+* remember last checkout
 * Test caching on/off
 
 # Hooks
@@ -360,9 +372,9 @@ a rewrite should add a new special "rewrite commit", since if it didn't then syn
 
 # Counts
 
-Per default commitdb counts total number of commits and total number of heads.
+Per default CommitDB counts total number of commits and total number of heads.
 
-You can tell commitdb to keep counts of other things in your meta-data like so:
+You can tell CommitDB to keep counts of other things in your meta-data like so:
 
 ```
 var cdb = commitdb(db, {

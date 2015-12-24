@@ -510,8 +510,7 @@ CommitDB.prototype.checkout = function(commit, opts, cb) {
         cb = opts;
         opts = null;
     }
-
-    if(typeof commit === 'object') {
+    if(commit && typeof commit === 'object') {
         commit = commit.id;
     }
     var self = this;
@@ -542,6 +541,7 @@ CommitDB.prototype._checkout = function(id, opts, cb) {
             opts.remember = false;
             self._checkout(id, opts, cb);
         });
+        return;
     }
 
     function finalize(id, data, cb) {
@@ -572,7 +572,7 @@ CommitDB.prototype._saveLastCheckout = function(id, cb) {
 };
 
 // retrieve commit saved by _saveLastCheckout
-CommitDB.prototype._getlastCheckout = function(cb) {
+CommitDB.prototype._getLastCheckout = function(cb) {
     this.db.get(['lastCheckout'], function(err, id) {
         if(err) {
             if(err.notFound) return cb(null, null);
@@ -704,14 +704,16 @@ CommitDB.prototype.prevStream = function(commit, opts) {
     }, opts || {});
 
     commit = commit || this.cur;
-    if(!commit) throw new Error("prevStream needs a commit as a starting point");
     return this._prevStream(commit, opts);
 };
 
 CommitDB.prototype._prevStream = function(commit, opts) {
 
     var keys = {}; // already processed keys
-    var queue = [commit];
+    var queue = []
+    if(commit) {
+        queue.push(commit);
+    }
 
     var i;
     var self = this;
@@ -771,14 +773,16 @@ CommitDB.prototype.nextStream = function(commit, opts) {
     }, opts || {});
 
     commit = commit || this.cur;
-    if(!commit) throw new Error("nextStream needs a commit as a starting point");
     return this._nextStream(commit, opts);
 }
 
 CommitDB.prototype._nextStream = function(commit, opts) {
 
     var keys = {}; // already processed keys
-    var queue = [commit];
+    var queue = [];
+    if(commit) {
+        queue.push(commit);
+    }
     var first = true;
 
     var i;
