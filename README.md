@@ -1,3 +1,4 @@
+[![NPM][npm-img]][npm-url]
 
 NOTE: This is not yet production-ready code. Expect bugs and API changes.
 
@@ -198,6 +199,35 @@ db.merge({
 });
 ```
 
+## .get
+
+Retrieve a commit object based on id:
+
+```
+db.get(
+  'f8b97d1adb133bac5658e076f3db2f6c2d91040830af8a0f0a9fc0ef13df850a',
+  function(err, obj) {
+    if(err) console.error(err);
+    console.log("Fetched commit with id:", obj.id);
+});
+```
+
+## .prev
+
+Get the previous commit(s).
+
+## .next
+
+## .prevStream
+
+## .nextStream
+
+## .headStream
+
+## .heads
+
+## .tail
+
 ## .automerge (not implemented!)
 
 ToDo
@@ -294,6 +324,10 @@ Check if a commit is a revert from a previous commit.
 You can optionally call isMerge synchronously if you supply a commit object instead of a commit id. 
 
 Usage is the same as .isTail except that if the commit _is_ a revert then .isRevert returns the commit id of the commit that was reverted from.
+
+## .db (property)
+
+The underlying levelup instance.
 
 # ToDo
 

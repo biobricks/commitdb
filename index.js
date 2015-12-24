@@ -708,7 +708,6 @@ CommitDB.prototype.prevStream = function(commit, opts) {
     return this._prevStream(commit, opts);
 };
 
-
 CommitDB.prototype._prevStream = function(commit, opts) {
 
     var keys = {}; // already processed keys
@@ -903,10 +902,6 @@ CommitDB.prototype.tail = function(cb) {
             cb(null, data);
         });
     }
-}
-
-CommitDB.prototype.rawStream = function() {
-  return this.db.createReadStream();
 }
 
 module.exports = CommitDB;
