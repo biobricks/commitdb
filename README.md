@@ -355,6 +355,7 @@ a rewrite should add a new special "rewrite commit", since if it didn't then syn
 
 * fork and merge
 * revert
+* checks
 * remember last checkout
 * Test caching on/off
 
