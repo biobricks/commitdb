@@ -395,7 +395,7 @@ Copyright 2015 BioBricks Foundation
 
 License AGPLv3
 
-[ci-img]: https://travis-ci.org/Juul/commitdb.svg
+[ci-img]: https://api.travis-ci.org/commitdb.svg
 [ci-url]: https://travis-ci.org/Juul/commitdb
 [npm-img]: https://nodei.co/npm/commitdb.png
 [npm-url]: https://nodei.co/npm/commitdb/
