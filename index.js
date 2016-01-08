@@ -141,16 +141,17 @@ CommitDB.prototype._genHash = function(obj) {
 };
 
 // actually commit
-CommitDB.prototype._commit = function(value, opts, cb) {
+CommitDB.prototype._commit = function(value, opts, cb, check) {
     var self = this;
 
-    if(opts.check && opts.prev && opts.prev.length) {
+    if(!check && opts.check && opts.prev && opts.prev.length) {
         this._checkExists(opts.prev, function(err, exists, missing) {
-            if(exists) return self._commit(value, opts, cb);
+            if(exists) return self._commit(value, opts, cb, true);
             cb(new Error("The following prev(s) do not exist: " + missing.join(', ')));
         });
         return;
     }
+
 
     var doc = {
         time: Date.now()
@@ -201,6 +202,11 @@ CommitDB.prototype._commit = function(value, opts, cb) {
         ops.push({type: 'put', key: ['lastCheckout'], value: key});
     }
 
+    // add next-indexes (next-indexes lets you discover the children of a parent)
+    for(i=0; i < opts.prev.length; i++) {
+        ops.push({type: 'put', key: ['n', opts.prev[i], key], value: true});
+    }
+
     this.db.batch(ops, function(err) {
         if(err) return cb(err);
         // success! update the caches
@@ -214,14 +220,8 @@ CommitDB.prototype._commit = function(value, opts, cb) {
         }
         if(isTail) {
             this.tailCache = key;
-            cb(null, key, doc);
-        } else {
-            // if this is not the tail then add a nextIndex
-            this._addNextIndexes(opts.prev, key, function(err) {
-                if(err) return cb(err);
-                cb(null, key, doc);
-            });
         }
+        cb(null, key, doc);
     }.bind(this));
 };
 
@@ -442,36 +442,6 @@ CommitDB.prototype._isTail = function(commit, cb) {
     }
 }
 
-// add an entry to the nextIndex 
-// (the nextIndex let's you look up the children of a parent commit)
-CommitDB.prototype._addNextIndex = function(parent, child, cb) {
-    var key = ['n', parent];
-    var children;
-    var self = this;
-    this.db.get(key, function(err, data) {
-        if(err) {
-            if(!err.notFound) return cb(err);
-            children = [child];
-        } else {
-            children = data;
-            children.push(child);
-        }
-        self.db.put(key, children, function(err) {
-            if(err) return cb(err);
-            cb(null, children);
-        });
-    });
-};
-
-CommitDB.prototype._addNextIndexes = function(parents, child, cb) {
-    var self = this;
-    async.eachSeries(parents, function(parent, cb) {
-        self._addNextIndex(parent, child, cb);
-    }, function(err) {
-        if(err) return cb(err);
-        cb(null);
-    });
-}
 
 // delete a commit
 CommitDB.prototype.del = function(key, opts) {
@@ -485,6 +455,8 @@ CommitDB.prototype.del = function(key, opts) {
 
     throw new Error("unimplemented");
     // ToDo implement
+
+    // note: only allow deletion of head commits
 };
 
 // get a commit
@@ -710,12 +682,28 @@ CommitDB.prototype._next = function(id, cb) {
 
 // get IDs of next commit(s)
 CommitDB.prototype._nextIDs = function(id, cb) {
-    this.db.get(['n', id], function(err, nextIDs) {
-        if(err) {
-            if(err.notFound) return cb(null, []);
-            return cb(err);
-        }
-        cb(null, nextIDs);
+
+    var s = this.db.createKeyStream({
+        gt: ['n', id, ''],
+        lt: ['n', id, '\uffff']
+    });
+
+    var self = this;
+    var ids = [];
+    var cbCalled = 0;
+
+    s.on('data', function(data) {
+        if(data.length === 3) ids.push(data[2]);
+    });
+           
+    s.on('end', function() {
+        if(cbCalled++) return;
+        cb(null, ids);
+    });
+
+    s.on('error', function(err) {
+        if(cbCalled++) return;
+        cb(err);
     });
 };
 

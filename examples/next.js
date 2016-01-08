@@ -34,6 +34,7 @@ var commits = [];
 async.eachSeries(a, function(o, cb) {
     db.commit(o, function(err, key) {
         if(err) return cb(err);
+//        console.log(key);
         commits.push(key);
         cb();
     });
@@ -43,7 +44,7 @@ async.eachSeries(a, function(o, cb) {
     console.log("commits:", commits.length);
 
     // check out fourth commit
-    db.checkout(commits[3], {verify: false});
+    db.checkout(commits[3], {fetch: false});
 
     async.eachSeries(b, function(o, cb) {
         db.commit(o, cb);
