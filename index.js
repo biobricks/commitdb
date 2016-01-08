@@ -21,12 +21,13 @@ function CommitDB(db, opts) {
     if(!(this instanceof CommitDB)) return new CommitDB(db, opts);
     EventEmitter.call(this);
 
-    this.opts = xtend(opts || {}, {
+    this.opts = xtend({
         cache: true, // you can turn off caching of heads and tail
         check: true, // check if prevs actually exist on commit
+        prefix: undefined, // set a key prefix (when sharing a db, like sublevel)
         hydra: true, // TODO turn off to disallow multiple heads 
         automerge: false // TODO if set, use these opts to call db.automerge whenever there is more than one head such that there will always be only one head 
-    });
+    }, opts || {});
     if(!this.opts.count) {
         this.opts.count = [];
     }
@@ -205,6 +206,12 @@ CommitDB.prototype._commit = function(value, opts, cb, check) {
     // add next-indexes (next-indexes lets you discover the children of a parent)
     for(i=0; i < opts.prev.length; i++) {
         ops.push({type: 'put', key: ['n', opts.prev[i], key], value: true});
+    }
+
+    if(this.opts.prefix) {
+        for(i=0; i < ops.length; i++) {
+            ops[i].key.splice(0, 0, this.opts.prefix);
+        }
     }
 
     this.db.batch(ops, function(err) {
@@ -469,8 +476,14 @@ CommitDB.prototype.get = function(id, cb) {
     this._get(id, cb);
 };
 
+CommitDB.prototype._key = function(key) {
+    if(this.opts.prefix) key.splice(0, 0, this.opts.prefix);
+    return key;
+};
+
 CommitDB.prototype._get = function(id, cb) {
-    this.db.get(['c', id], function(err, obj) {
+
+    this.db.get(this._key(['c', id]), function(err, obj) {
         if(err) {
             if(err.notFound) return cb(new NotFoundError("No such commit: " + id));
             return cb(err);
@@ -551,12 +564,12 @@ CommitDB.prototype._checkout = function(id, opts, cb) {
 // save a commit as being the last checked out commit
 // so the same commit can be checked out next time the db is loaded
 CommitDB.prototype._saveLastCheckout = function(id, cb) {
-    this.db.put(['lastCheckout'], id, cb);
+    this.db.put(this._key(['lastCheckout']), id, cb);
 };
 
 // retrieve commit saved by _saveLastCheckout
 CommitDB.prototype._getLastCheckout = function(cb) {
-    this.db.get(['lastCheckout'], function(err, id) {
+    this.db.get(this._key(['lastCheckout']), function(err, id) {
         if(err) {
             if(err.notFound) return cb(null, null);
             return cb(err);
@@ -667,7 +680,7 @@ CommitDB.prototype._next = function(id, cb) {
         if(err) return cb(err);
         var commits = [];
         async.eachSeries(nextIDs, function(nextID) {
-            self.db.get(nextID, function(err, doc) {
+            self.db.get(self._key(nextID), function(err, doc) {
                 if(err) return cb(err);
                 doc.id = id;
                 commits.push(doc);
@@ -684,8 +697,8 @@ CommitDB.prototype._next = function(id, cb) {
 CommitDB.prototype._nextIDs = function(id, cb) {
 
     var s = this.db.createKeyStream({
-        gt: ['n', id, ''],
-        lt: ['n', id, '\uffff']
+        gt: this._key(['n', id, '']),
+        lt: this._key(['n', id, '\uffff'])
     });
 
     var self = this;
@@ -693,7 +706,7 @@ CommitDB.prototype._nextIDs = function(id, cb) {
     var cbCalled = 0;
 
     s.on('data', function(data) {
-        if(data.length === 3) ids.push(data[2]);
+        ids.push(data[data.length-1]);
     });
            
     s.on('end', function() {
@@ -860,14 +873,14 @@ CommitDB.prototype._nextStream = function(commit, opts) {
 // stream of heads
 CommitDB.prototype.headStream = function() {
     return this.db.createReadStream({
-        gt: ['h'],
-        lt: ['h\uffff']
+        gt: this._key(['h']),
+        lt: this._key(['h\uffff'])
     });
 };
 
 // get a head
 CommitDB.prototype._getHead = function(id, cb) {
-    this.db.get(['h', id], function(err, obj) {
+    this.db.get(this._key(['h', id]), function(err, obj) {
         if(err) {
             if(err.notFound) return cb(null, null);
             return cb(err);
@@ -889,7 +902,7 @@ CommitDB.prototype.heads = function(cb) {
         var s = this.headStream();
         var key;
         s.on('data', function(data) {
-            key = data.key[1];
+            key = data.key[data.key.length - 1];
             this.headCache[key] = true;
         }.bind(this));
            
@@ -916,7 +929,7 @@ CommitDB.prototype.tail = function(cb) {
             return this.tailCache;
         }
     } else {
-        this.db.get(['tail'], function(err, data) {
+        this.db.get(this._key(['tail']), function(err, data) {
             if(err) {
                 if(!err.notFound) {
                     return cb(err);

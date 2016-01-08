@@ -7,7 +7,8 @@ var commitdb = require('../index.js');
 var rawdb = levelup('/tmp/foodb');
 
 var db = commitdb(rawdb, {
-    cache: true
+    cache: false,
+    prefix: 'pre'
 });
 
 var a = [
