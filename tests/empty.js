@@ -25,7 +25,7 @@ test('empty', function(t) {
             t.equal(tail, null);
             t.equal(db.current(), null);
 
-            db.checkout(function(err, obj) {
+            db.checkout(function(err, id, obj) {
                 if(err) return t.fail(".checkout failed: " + err);
                 
                 t.equal(obj, null);

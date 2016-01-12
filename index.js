@@ -1,4 +1,3 @@
-
 var util = require('util');
 var crypto = require('crypto');
 var xtend = require('xtend');
@@ -179,7 +178,7 @@ CommitDB.prototype._commit = function(value, opts, cb, check) {
     }
 
     doc.value = value;
-    var key = this._genHash(doc);
+    var key = opts.id || this._genHash(doc);
 
     var ops = []
     // add the commit
@@ -214,7 +213,7 @@ CommitDB.prototype._commit = function(value, opts, cb, check) {
         }
     }
 
-    opts.batchFunc(ops, function(err) {
+    opts.batchFunc(ops, {}, function(err) {
         if(err) return cb(err);
         // success! update the caches
         for(i=0; i < opts.prev.length; i++) {
@@ -232,8 +231,6 @@ CommitDB.prototype._commit = function(value, opts, cb, check) {
     }.bind(this));
 };
 
-// just some syntactic sugar for merging
-// calling without any prevs merges all heads
 CommitDB.prototype.merge = function(value, prevs, cb) {
     var opts = {};
     if(typeof prevs === 'function' || !prevs || !prevs.length) {
@@ -545,10 +542,10 @@ CommitDB.prototype._checkout = function(id, opts, cb) {
         if(opts.remember) {
             self._saveLastCheckout(id, function(err) {
                 if(err) return cb(err);
-                cb(null, data);
+                cb(null, id, data);
             });
         } else {
-            cb(null, data);
+            cb(null, id, data);
         }
     }
 
