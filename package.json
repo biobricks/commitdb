@@ -1,6 +1,6 @@
 {
   "name": "commitdb",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "commit history using leveldb",
   "main": "index.js",
   "repository": {
