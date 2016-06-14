@@ -1,15 +1,15 @@
 [![NPM][npm-img]][npm-url]
 [![Build Status][ci-img]][ci-url]
 
-NOTE: This is not yet production-ready code. Expect bugs and API changes.
+NOTE: We do not yet consider this production-ready code.
 
 CommitDB keeps track of commit history for a single project/entity.
 
 CommitDB allows multiple heads (it does not force you to merge heads), but allows only one tail.
 
-CommitDB only tracks metadata. The actual data should be stored elsewhere.
+CommitDB only tracks metadata. The actual data should be stored elsewhere. See [pastlevel](https://github.com/biobricks/pastlevel) for an example.
 
-CommitDB uses atomic commits and streams are pinned to the commit history as it looked when the stream was created. The worst that can happen is if someone creates a new commit, changing the head, while you're trying to merge all heads: You will end up having merged the old heads. There is no way to avoid this if you're planning to use CommitDB in a decentralized setup. 
+CommitDB uses atomic commits so the commit database will always be consistent. headStreams are pinned to commit history as it looked when the stream was created, however, prevStreams and nextStreams are not. E.g: If you are using a nextStream and someone creates a new commit at the head before you reach the head then this new commit will be emitted by the nextStream. Also, if someone creates a new commit, changing the head, while you're trying to merge all heads, you will end up having merged the old heads.
 
 # Usage
 
@@ -422,16 +422,26 @@ The underlying levelup instance.
 
 # ToDo
 
-* implement delete/destroy
+This module _really_ needs some more tests.
+
+* write better tests
+* implement delete/destroy?
 * implement tags
 * implement named branches
 * implement counts
 * implement hooks
-* write better tests
 * implement "hydra: false" to disallow multiple heads
 * implement automerge function and constructor opt
 * implement rewrite (change the contents of a commit)
-a rewrite should add a new special "rewrite commit", since if it didn't then synchronization would be a pain
+
+
+## about rewrites
+
+Rewrites will need their own (single-headed) DAG separate from commit history. Resolving merge conflicts on this DAG will have to be done simplistically, e.g. using commit time (which might be wrong and if it's set far in the future would make things annoying). This same DAG could also be used for tagging and naming braches.
+
+We need a separate DAG for this because: What happens if someone rewrites an old commit and that rewrite gets pushed to one head/branch and then someone rewrites the same commit on a different branch? It doesn't really make sense. Better 
+
+It may be that allowing rewrites is a terrible idea. This library is different from git in that it is expected to be used in scenarios where many repos have continuous replications between each-other. The expectation is that you're never going to be doing something like a git-rebase as it would break anything. In this scenario you can't ever ask everyone to delete their copy and clone the repo again. What happens if you e.g. accidentally dox someone in a commit? It's already "pushed" to all the other servers. Rewrites allows this mistake to be fixed. Allowing rewrites means that someone malicious could potentially delete all data in all copies of a repo :/
 
 ## Test cases
 
@@ -443,6 +453,8 @@ a rewrite should add a new special "rewrite commit", since if it didn't then syn
 * Test caching on/off
 
 # Hooks
+
+ToDo not implemented
 
 ## .on('pre-commit')
 
@@ -480,14 +492,14 @@ If the property being counted is a string, then a count for each unique string w
 
 ```
 {
-  'Bro Grammer': 7, // Bro Grammer has 7 commits
+  'Grunkle': 7, // Grunkle has 7 commits
   'Cookie Cat': 42 // Cookie Cat has 42 commits
 }
 ```
 
 # Copyright and license
 
-Copyright 2015 BioBricks Foundation
+Copyright 2015-2016 BioBricks Foundation
 
 License AGPLv3
 
