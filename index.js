@@ -89,6 +89,7 @@ CommitDB.prototype.commit = function(value, opts, cb) {
         opts = {};
     }
     opts = xtend({
+        // note: if prev is null it means: try to make this commit a tail (ignore this.cur)
         prev: [], // use prev as parent, rather than this.cur (can be array)
         check: this.opts.check, // check if prevs exist
         unify: false, // if true, this commit uses all current heads as prev
@@ -108,7 +109,7 @@ CommitDB.prototype.commit = function(value, opts, cb) {
         });
     } else {
         if(!opts.prev || !opts.prev.length) {
-            if(this.cur) {
+            if(this.cur && (opts.prev !== null)) {
                 opts.prev = [this.cur];
             }
         }
