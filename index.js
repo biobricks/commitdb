@@ -530,7 +530,7 @@ CommitDB.prototype._checkout = function(id, opts, cb) {
     if(!id) {
         this._getLastCheckout(function(err, id) {
             if(err) return cb(err);
-            if(!id) return cb(null, null);
+            if(!id) return cb(null, null, null);
             opts.remember = false;
             self._checkout(id, opts, cb);
         });

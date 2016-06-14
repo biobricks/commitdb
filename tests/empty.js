@@ -27,7 +27,6 @@ test('empty', function(t) {
 
             db.checkout(function(err, id, obj) {
                 if(err) return t.fail(".checkout failed: " + err);
-                
                 t.equal(obj, null);
 
                 var s = db.prevStream();
